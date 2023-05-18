@@ -1,0 +1,4 @@
+sysroot
+__pycache__
+*.o
+*.elf
