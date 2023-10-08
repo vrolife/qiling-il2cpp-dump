@@ -1,3 +1,4 @@
+import sys
 import json
 import struct
 import ctypes
@@ -24,22 +25,46 @@ memory_data = open(info_pathname.parent / memory_info['memory_file'], "rb")
 def load_memory(mu):
     idx = 0
 
+    regions = []
     for region in memory_info["regions"]:
+        r = dict(region)
+
         file = region["file"]
-        if file.startswith("/dev/kgsl") or region["prot"] == 0 or region["desc"].endswith("stack]"):
-            continue
-        if 'aidl' in file or 'hidl' in file or 'vndk' in file or 'android.hardware' in file \
-                or file.endswith("dex") or file.endswith("jar") or file.endswith("apk") or file.endswith("art") \
-                or file.endswith("oat") or 'dalvik' in file or 'dalvik' in region['desc'] or file.startswith('/vendor') or 'hardware' in file:
+        if file.startswith("/dev/k"):
             continue
 
+        if "stack" in r["desc"]:
+            continue
+
+        if "[anon:dalvik-LinearAlloc]" in r["desc"]:
+            continue
+
+        if '/system/fonts/' in r["desc"]:
+            continue
+
+        if file.endswith("jar") or file.endswith("apk") or file.endswith("hyb"):
+            continue
+
+        if len(regions) == 0:
+            regions.append(r)
+            continue
+
+        if r['file'] == regions[-1]["file"] and r['begin'] == regions[-1]["end"] and regions[-1]["saved_size"] == (regions[-1]["end"] - regions[-1]["begin"]):
+            regions[-1]["end"] = r['end']
+            regions[-1]["saved_size"] += r['saved_size']
+            continue
+        regions.append(r)
+    print(len(regions))
+
+    for region in regions:
         size = region["end"] - region["begin"]
         mu.mem_map(region["begin"], size)
 
-        memory_data.seek(region["saved_offset"], 0)
-        mem = memory_data.read(region["saved_size"])
-        mu.mem_write(region["begin"], mem)
-        del mem
+        if region["saved_size"] != 0:
+            memory_data.seek(region["saved_offset"], 0)
+            mem = memory_data.read(region["saved_size"])
+            mu.mem_write(region["begin"], mem)
+            del mem
 
         print(f"Load {idx}/{len(memory_info['regions'])} {region['begin']:x}-{region['end']:x} {size} {region['file']} {region['desc']}")
         idx += 1
@@ -108,9 +133,17 @@ ql.uc.mem_write(TCB_ADDRESS, bytes(thread))
 
 ql.uc.reg_write(UC_ARM64_REG_TPIDR_EL0, TLS_ADDRESS + 8)
 
-load_memory(ql.uc)
-
 HEAP_ADDRESS = STACK_ADDRESS + 0x8000
+
+# def __cxa_throw(*args):
+#     print(f"throw exception... 0x{ql.uc.reg_read(UC_ARM64_REG_LR):x}")
+#     sys.exit(-1)
+#
+# __cxa_throw_addr, = libc.get_funcs(memory_info, memory_data, 'libil2cpp.so', ['__cxa_throw'])
+# print(f"__cxa_throw_addr {__cxa_throw_addr}")
+# ql.uc.hook_add(UC_HOOK_CODE, __cxa_throw, None, __cxa_throw_addr, __cxa_throw_addr + 4)
+
+load_memory(ql.uc)
 
 def malloc(*args):
     global HEAP_ADDRESS

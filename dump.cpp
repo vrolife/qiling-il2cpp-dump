@@ -338,11 +338,17 @@ void dump_type(const Il2CppType *type) {
     dump << "}\n";
 }
 
+extern "C" void pthread_atfork() {  }
+extern "C" int atexit(void (*function)(void)) { return 0; }
+
 extern "C"
 int entry(dlsym_t dlsym, uintptr_t il2cpp_base)
 {
     _dlsym = dlsym;
     _il2cpp_base = il2cpp_base;
+    uprint("payload dlsym %p\n", dlsym);
+
+    void* x = _dlsym(NULL, "", (void*)_il2cpp_base);
     uprint("payload dlsym %p\n", dlsym);
 
     dump_fd = open("/dump.cs", O_RDWR | O_CREAT, 0777);
@@ -381,6 +387,7 @@ int entry(dlsym_t dlsym, uintptr_t il2cpp_base)
     }
     typedef void *(*Assembly_Load_ftn)(void *, Il2CppString *, void *);
     typedef Il2CppArray *(*Assembly_GetTypes_ftn)(void *, void *);
+
     for (int i = 0; i < size; ++i) {
         auto image = il2cpp_assembly_get_image(assemblies[i]);
         // std::stringstream imageStr;
@@ -395,9 +402,13 @@ int entry(dlsym_t dlsym, uintptr_t il2cpp_base)
         memcpy(imageNameNoExt, image_name, end - image_name);
         imageNameNoExt[end - image_name] = 0;
         auto assemblyFileName = il2cpp_string_new(imageNameNoExt);
-        auto reflectionAssembly = ((Assembly_Load_ftn) assemblyLoad->methodPointer)(nullptr,
-                                                                                    assemblyFileName,
-                                                                                    nullptr);
+        uprint("Dump %s %d/%d\n", imageNameNoExt, i, size);
+        // auto reflectionAssembly = ((Assembly_Load_ftn) assemblyLoad->methodPointer)(nullptr,
+        //                                                                             assemblyFileName,
+        //                                                                             nullptr);
+        void* args[] = { assemblyFileName, NULL };
+        Il2CppException *exc = NULL;
+        auto* reflectionAssembly = il2cpp_runtime_invoke(assemblyLoad, assemblyClass, args, &exc);
         auto reflectionTypes = ((Assembly_GetTypes_ftn) assemblyGetTypes->methodPointer)(
                 reflectionAssembly, nullptr);
         auto items = reflectionTypes->vector;
