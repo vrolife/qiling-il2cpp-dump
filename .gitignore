@@ -2,3 +2,4 @@ sysroot
 __pycache__
 *.o
 *.elf
+rootfs/dump.cs

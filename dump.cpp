@@ -17,18 +17,27 @@
 
 typedef void* (*dlsym_t)(void *handle, const char *symbol, const void* caller_addr);
 
+int dump_fd = 2;
+
+char buf[64 * 1024 * 1024];
+size_t buf_pos = 0;
+
 void _uprint(int fd, const char* format, ...) {
     char buffer[4096];
     va_list args;
     va_start(args, format);
     auto n = vsnprintf(buffer, 4096, format, args);
     va_end(args);
-    write(fd, buffer, n);
+    if (fd == dump_fd) {
+        memcpy(&buf[buf_pos], buffer, n);
+        buf_pos += n;
+    } else {
+        write(fd, buffer, n);
+    }
 }
 
 #define uprint(...) _uprint(2, __VA_ARGS__)
 
-int dump_fd = 2;
 uint64_t _il2cpp_base = 0;
 dlsym_t _dlsym = 0;
 
@@ -322,7 +331,7 @@ void dump_type(const Il2CppType *type) {
     if (!is_valuetype && !is_enum && parent) {
         auto parent_type = il2cpp_class_get_type(parent);
         if (parent_type->type != IL2CPP_TYPE_OBJECT) {
-            dump << il2cpp_class_get_name(parent) << ",";
+            dump << il2cpp_class_get_namespace(klass) << "." << il2cpp_class_get_name(parent) << ",";
         }
     }
     void *iter = nullptr;
@@ -421,6 +430,8 @@ int entry(dlsym_t dlsym, uintptr_t il2cpp_base)
             // outPuts.push_back(outPut);
         }
     }
+    write(dump_fd, buf, buf_pos);
+    close(dump_fd);
     uprint("done...\n");
     return 0;
 }
